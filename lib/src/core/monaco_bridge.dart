@@ -108,6 +108,7 @@ class MonacoBridge extends ChangeNotifier {
         case {'event': 'selectionChanged'}:
         case {'event': 'focus'}:
         case {'event': 'blur'}:
+        case {'event': 'completionRequest'}:
           // These are handled by the controller's raw listener
           break;
 

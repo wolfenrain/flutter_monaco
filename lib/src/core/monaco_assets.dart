@@ -14,7 +14,7 @@ class MonacoAssets {
   static const String _relativePath = 'min/vs';
 
   /// The version of the Monaco Editor assets embedded in the package.
-  static const String monacoVersion = '0.52.2';
+  static const String monacoVersion = '0.54.0';
 
   static Completer<void>? _initCompleter;
 

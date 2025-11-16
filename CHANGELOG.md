@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Export ordering and analyzer fixes to keep the public API clean.
 
+## [1.1.1] - 2025-11-16
+### Changed
+- Bundled Monaco Editor updated to **v0.54.0** (latest stable drop from Microsoft). Existing apps automatically pick up the new assets on next launch.
+
 ## [1.0.0] - 2025-09-15
 - Reliable typing after route/app switches on macOS/Windows — no right‑click needed.
 - Optional `MonacoFocusGuard` to auto‑restore focus on resume/route return.
