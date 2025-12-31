@@ -2,7 +2,7 @@
 
 [![pub package](https://img.shields.io/pub/v/flutter_monaco.svg?label=pub)](https://pub.dev/packages/flutter_monaco)
 [![License: MIT](https://img.shields.io/badge/License-MIT-success.svg)](LICENSE)
-[![Platforms](https://img.shields.io/badge/platforms-Android%20%7C%20iOS%20%7C%20macOS%20%7C%20Windows-blue)](#platform-support)
+[![Platforms](https://img.shields.io/badge/platforms-Android%20%7C%20iOS%20%7C%20macOS%20%7C%20Windows%20%7C%20Web-blue)](#platform-support)
 
 A Flutter plugin for integrating the Monaco Editor (VS Code's editor) into Flutter applications via WebView.
 
@@ -16,7 +16,7 @@ A Flutter plugin for integrating the Monaco Editor (VS Code's editor) into Flutt
 - 🌐 **100+ Language Support** - Syntax highlighting for all major languages
 - 🎭 **Multiple Themes** - Dark, Light, and High Contrast themes
 - 💾 **Versioned Asset Caching** - Efficient one-time asset installation
-- 🖥️ **Cross-Platform** - Works on Android, iOS, macOS, and Windows
+- 🖥️ **Cross-Platform** - Works on Android, iOS, macOS, Windows, and Web
 - ⚡ **Multiple Editors** - Support for unlimited independent editor instances
 - 📊 **Live Statistics** - Real-time line/character counts and selection info
 - 🎯 **Type-safe API** - Comprehensive typed bindings for Monaco's JavaScript API
@@ -25,7 +25,7 @@ A Flutter plugin for integrating the Monaco Editor (VS Code's editor) into Flutt
 - 🎭 **Decorations & Markers** - Add highlights, errors, warnings to your code
 - 📡 **Event Streams** - Listen to content changes, selection, focus events
 
-> **⚠️ Platform Support:** Currently supports **Android**, **iOS**, **macOS**, and **Windows**. Web and Linux are **not supported** at this time.
+> **⚠️ Platform Support:** Currently supports **Android**, **iOS**, **macOS**, **Windows**, and **Web**. Linux is **not supported** at this time.
 
 ## Screenshots
 
@@ -111,12 +111,14 @@ await controller.setTheme(theme);
 ### Available Enums
 
 **MonacoTheme**
+
 - `MonacoTheme.vs` - Light theme
-- `MonacoTheme.vsDark` - Dark theme  
+- `MonacoTheme.vsDark` - Dark theme
 - `MonacoTheme.hcBlack` - High contrast dark
 - `MonacoTheme.hcLight` - High contrast light
 
 **MonacoLanguage** (70+ languages including)
+
 - `MonacoLanguage.javascript`, `MonacoLanguage.typescript`, `MonacoLanguage.python`
 - `MonacoLanguage.dart`, `MonacoLanguage.java`, `MonacoLanguage.csharp`
 - `MonacoLanguage.go`, `MonacoLanguage.rust`, `MonacoLanguage.swift`
@@ -126,6 +128,7 @@ await controller.setTheme(theme);
 - And many more...
 
 **CursorBlinking**
+
 - `CursorBlinking.blink` - Default blinking
 - `CursorBlinking.smooth` - Smooth fade animation
 - `CursorBlinking.phase` - Phase animation
@@ -133,6 +136,7 @@ await controller.setTheme(theme);
 - `CursorBlinking.solid` - No blinking
 
 **CursorStyle**
+
 - `CursorStyle.line` - Vertical line (default)
 - `CursorStyle.block` - Block cursor
 - `CursorStyle.underline` - Underline cursor
@@ -141,6 +145,7 @@ await controller.setTheme(theme);
 - `CursorStyle.underlineThin` - Thin underline
 
 **RenderWhitespace**
+
 - `RenderWhitespace.none` - Don't render whitespace
 - `RenderWhitespace.boundary` - Render whitespace at word boundaries
 - `RenderWhitespace.selection` - Render whitespace in selection
@@ -148,6 +153,7 @@ await controller.setTheme(theme);
 - `RenderWhitespace.all` - Render all whitespace
 
 **AutoClosingBehavior**
+
 - `AutoClosingBehavior.always` - Always auto-close brackets
 - `AutoClosingBehavior.languageDefined` - Use language defaults
 - `AutoClosingBehavior.beforeWhitespace` - Auto-close before whitespace
@@ -279,7 +285,7 @@ class _MultiEditorViewState extends State<MultiEditorView> {
         minimap: true,
       ),
     );
-    
+
     _jsController = await MonacoController.create(
       options: const EditorOptions(
         language: MonacoLanguage.javascript,
@@ -288,7 +294,7 @@ class _MultiEditorViewState extends State<MultiEditorView> {
         minimap: true,
       ),
     );
-    
+
     _markdownController = await MonacoController.create(
       options: const EditorOptions(
         language: MonacoLanguage.markdown,
@@ -299,12 +305,12 @@ class _MultiEditorViewState extends State<MultiEditorView> {
         lineNumbers: false,
       ),
     );
-    
+
     // Set initial content
     await _dartController!.setValue('// Dart code');
     await _jsController!.setValue('// JavaScript code');
     await _markdownController!.setValue('# Markdown content');
-    
+
     setState(() {});
   }
 
@@ -313,7 +319,7 @@ class _MultiEditorViewState extends State<MultiEditorView> {
     if (_dartController == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    
+
     return Column(
       children: [
         // Top row - Dart and JavaScript side by side
@@ -500,22 +506,25 @@ await MonacoAssets.clearCache();
 ### Asset Management
 
 The plugin uses a versioned cache system:
+
 - Monaco assets (~30MB) are bundled with the plugin in `assets/monaco/min/`
 - Assets are extracted once to the app's support directory
-- Assets are versioned (e.g., `monaco-0.52.2/`) for clean updates
+- Assets are versioned (e.g., `monaco-0.54.0/`) for clean updates
 - Multiple editors share the same asset installation
 - Thread-safe initialization with re-entrant protection
 
 ### Platform Support
 
 **Supported Platforms:**
+
 - **Android**: WebView via `webview_flutter`
 - **iOS**: WKWebView with automatic blob worker shim for file:// protocol
 - **macOS**: WKWebView via `webview_flutter` with blob worker shim
 - **Windows**: WebView2 via `webview_windows` (requires WebView2 Runtime)
+- **Web**: Native iframe-based integration with Monaco assets served from Flutter's asset bundle
 
 **Not Supported:**
-- **Web**: Not supported (asset bundling limitations)
+
 - **Linux**: Not currently supported (WebKitGTK integration pending)
 
 ### Performance
@@ -528,25 +537,34 @@ The plugin uses a versioned cache system:
 ## Requirements
 
 ### macOS
+
 - macOS 10.13 or later
 - Xcode (for development)
 
 ### Windows
+
 - Windows 10 version 1809 or later
 - Microsoft Edge WebView2 Runtime (auto-installed on most Windows 10/11 systems)
 
 ### Android
+
 - Android 5.0 (API level 21) or later
 - WebView support (included by default)
 
 ### iOS
+
 - iOS 11.0 or later
 - Info.plist must allow local file access
 
+### Web
+
+- Modern browser with ES6+ support (Chrome, Firefox, Safari, Edge)
+- No additional configuration required
 
 ## Example App
 
 The [example](example/) directory contains a full demonstration app with:
+
 - Basic single editor setup
 - Language and theme switching
 - Multi-editor layout (3 editors simultaneously)
@@ -555,24 +573,30 @@ The [example](example/) directory contains a full demonstration app with:
 - Cross-editor content copying
 
 Run the example:
+
 ```bash
 cd example
-flutter run -d macos  # or android, ios, windows
+flutter run -d macos  # or android, ios, windows, chrome
 ```
 
 ## Important Notes
 
 ### Asset Management
+
 Monaco Editor assets are **automatically bundled** with this plugin. You do not need to add any assets to your application. The plugin handles:
+
 - Asset extraction on first launch
 - Versioned caching for fast subsequent loads
 - Automatic cleanup when updating versions
 
 ### Content Queuing
+
 The controller automatically queues content and language changes made before the editor is ready. Your content won't be lost even if you call `setValue()` immediately after creating the controller.
 
 ### Event Handling
+
 For advanced users, you can listen to raw JavaScript events:
+
 ```dart
 controller.onContentChanged.listen((isFlush) { });
 controller.onSelectionChanged.listen((range) { });
@@ -581,6 +605,7 @@ controller.onBlur.listen((_) { });
 ```
 
 ### Marker Owners
+
 When using markers (diagnostics), the `clearAllMarkers()` method only clears markers from known owners ('flutter', 'flutter-errors', 'flutter-warnings'). Custom owners must be tracked and cleared separately.
 
 ## Troubleshooting
@@ -590,6 +615,7 @@ If you are seeing issues where the editor loses keyboard focus after navigating 
 - Focus, First Responder, and Keyboard on Platform Views (macOS/Windows): doc/focus-and-platform-views.md
 
 ### Desktop Focus Helper (optional)
+
 For apps that frequently switch routes or windows, you can drop in a tiny helper to reassert focus automatically:
 
 ```dart
@@ -600,38 +626,48 @@ MonacoFocusGuard(
   // routeObserver: myRouteObserver,
 );
 ```
+
 See the guide above for details and best practices.
 
 ### Windows: WebView2 not found
+
 If you get a WebView2 error on Windows, install the WebView2 Runtime:
 https://developer.microsoft.com/en-us/microsoft-edge/webview2/
 
 ### macOS/iOS: Workers not loading
+
 The plugin automatically configures a blob worker shim. If you still have issues:
+
 1. Check the console output for errors
 2. Ensure file:// access is allowed in your WebView configuration
 
 ### Assets not loading
+
 If Monaco assets fail to load:
+
 1. Check the console for error messages
 2. Try clearing the cache: `await MonacoAssets.clearCache()`
 3. Ensure your app has file system permissions
 
 ### Editor not responding
+
 If the editor becomes unresponsive:
+
 1. Check that JavaScript is enabled in the WebView
 2. Verify the HTML file was generated correctly
 3. Look for JavaScript errors in the console output
 
 ### Multiple editors performance
+
 If performance degrades with multiple editors:
+
 1. Limit to 3-4 editors on mobile devices
 2. Disable minimap for better performance
 3. Consider lazy initialization of editors
 
 ## Limitations
 
-- **No Web/Linux Support**: The plugin currently only supports Android, iOS, macOS, and Windows.
+- **No Linux Support**: The plugin currently supports Android, iOS, macOS, Windows, and Web. Linux is not yet supported.
 - **Performance**: While optimized, running multiple editor instances (4+) can be resource-intensive, especially on older hardware. Each instance runs in a separate WebView, consuming 30-100MB of memory depending on content.
 - **Startup Time**: The first time the app is launched, Monaco's assets (~30MB) are extracted, which can take 1-2 seconds. Subsequent launches are much faster.
 - **WebView Dependencies**: The plugin relies on platform-specific WebView implementations (WebView2 on Windows, WKWebView on Apple platforms). Ensure the target system has the necessary dependencies.
@@ -644,7 +680,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
 3. Commit your changes (`git commit -m 'Add some amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request``
+5. Open a Pull Request
 
 ## Support
 

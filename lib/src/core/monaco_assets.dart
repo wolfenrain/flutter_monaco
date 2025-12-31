@@ -1,17 +1,20 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 /// Monaco asset manager - Single source of truth for all Monaco-related assets
 class MonacoAssets {
-  static const String _assetBaseDir = 'packages/flutter_monaco/assets/monaco';
+  /// The base directory of the Monaco Editor assets.
+  static const String assetBaseDir = 'packages/flutter_monaco/assets/monaco';
+
+  /// The cache subdirectory for the Monaco Editor assets.
   static const String _cacheSubDir = 'monaco_editor_cache';
+
   static const String _htmlFileName = 'index.html';
-  static const String _relativePath = 'min/vs';
 
   /// The version of the Monaco Editor assets embedded in the package.
   static const String monacoVersion = '0.54.0';
@@ -22,12 +25,12 @@ class MonacoAssets {
   static final Map<int, String> _htmlCache = {};
 
   /// Ensures Monaco assets are ready. Thread-safe with re-entrant protection.
-  static Future<void> ensureReady() {
+  static Future<void> ensureReady() async {
     if (_initCompleter != null) return _initCompleter!.future;
 
-    final c = _initCompleter = Completer<void>();
+    final completer = _initCompleter = Completer<void>();
 
-    () async {
+    if (!kIsWeb) {
       try {
         final targetDir = await _getTargetDir();
         final loader = File(p.join(targetDir, 'min', 'vs', 'loader.js'));
@@ -46,48 +49,35 @@ class MonacoAssets {
               '[MonacoAssets] Monaco already extracted at: $targetDir (version $monacoVersion)');
         }
 
-        // Create default HTML file without custom CSS
-        await _ensureHtmlFile(targetDir);
-        c.complete();
+        completer.complete();
       } catch (e, st) {
-        c.completeError(e, st);
+        completer.completeError(e, st);
       }
-    }();
+    }
 
-    return c.future;
+    if (!completer.isCompleted && kIsWeb) {
+      completer.complete();
+    }
+
+    return completer.future;
   }
 
   /// Get the path to the HTML file
-  ///
-  /// [customCss] - Custom CSS to inject into the editor
-  /// [allowCdnFonts] - Whether to allow loading fonts from CDNs
-  static Future<String> indexHtmlPath({
-    String? customCss,
-    bool allowCdnFonts = false,
-  }) async {
+  static Future<String> indexHtmlPath({required int cacheKey}) async {
+    if (kIsWeb) {
+      return 'assets/packages/flutter_monaco/assets/monaco/index.html';
+    }
+
     await ensureReady();
     final targetDir = await _getTargetDir();
-
-    // Generate cache key based on parameters
-    final cacheKey = Object.hash(customCss, allowCdnFonts);
 
     // Check if we already have this HTML cached
     if (_htmlCache.containsKey(cacheKey)) {
       return _htmlCache[cacheKey]!;
     }
 
-    // Generate new HTML with custom CSS if provided
-    await _ensureHtmlFile(
-      targetDir,
-      customCss: customCss,
-      allowCdnFonts: allowCdnFonts,
-      cacheKey: cacheKey,
-    );
-
     // Cache and return the path
-    final htmlPath = p.join(targetDir, 'monaco_$cacheKey.html');
-    _htmlCache[cacheKey] = htmlPath;
-    return htmlPath;
+    return _htmlCache[cacheKey] = p.join(targetDir, 'monaco_$cacheKey.html');
   }
 
   /// Get information about extracted Monaco assets
@@ -156,51 +146,6 @@ class MonacoAssets {
     );
   }
 
-  static Future<void> _ensureHtmlFile(
-    String targetDir, {
-    String? customCss,
-    bool allowCdnFonts = false,
-    int? cacheKey,
-  }) async {
-    // Use cache key in filename to avoid conflicts
-    final fileName = cacheKey != null ? 'monaco_$cacheKey.html' : _htmlFileName;
-    final htmlFile = File(p.join(targetDir, fileName));
-
-    // Skip if file already exists (cached)
-    if (htmlFile.existsSync() && cacheKey != null) {
-      debugPrint('[MonacoAssets] Using cached HTML file: ${htmlFile.path}');
-      return;
-    }
-
-    // Generate platform-specific HTML
-    String htmlContent;
-
-    if (Platform.isWindows) {
-      // Windows needs absolute paths since we load from file://
-      final vsPath = p.join(targetDir, 'min', 'vs');
-      final absoluteVsPath = Uri.file(vsPath).toString();
-      htmlContent = _generateIndexHtml(
-        absoluteVsPath,
-        isWindows: true,
-        customCss: customCss,
-        allowCdnFonts: allowCdnFonts,
-      );
-    } else {
-      // macOS uses relative paths since HTML is in the same directory
-      htmlContent = _generateIndexHtml(
-        _relativePath,
-        isWindows: false,
-        customCss: customCss,
-        allowCdnFonts: allowCdnFonts,
-      );
-    }
-
-    // Write the HTML file
-    await htmlFile.writeAsString(htmlContent);
-
-    debugPrint('[MonacoAssets] HTML file created at: ${htmlFile.path}');
-  }
-
   static Future<void> _copyAllAssets(String targetDir) async {
     final stopwatch = Stopwatch()..start();
 
@@ -215,7 +160,7 @@ class MonacoAssets {
     final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
     final monacoAssets = manifest
         .listAssets()
-        .where((key) => key.startsWith(_assetBaseDir))
+        .where((key) => key.startsWith(assetBaseDir))
         .where((key) => !key.endsWith('.DS_Store')) // Skip macOS metadata files
         .toList();
 
@@ -228,7 +173,7 @@ class MonacoAssets {
     for (final assetKey in monacoAssets) {
       try {
         // Calculate relative path (skip index.html from assets if it exists)
-        final relativePath = assetKey.substring('$_assetBaseDir/'.length);
+        final relativePath = assetKey.substring('$assetBaseDir/'.length);
         if (relativePath.isEmpty || relativePath == _htmlFileName) continue;
 
         // Create target file path
@@ -266,16 +211,43 @@ class MonacoAssets {
         '[MonacoAssets] Sentinel file written for version $monacoVersion');
   }
 
-  static String _generateIndexHtml(
+  /// Generate the index.html file for the Monaco editor
+  static String generateIndexHtml(
     String vsPath, {
-    required bool isWindows,
+    bool isWindows = false,
+    bool isIosOrMacOS = false,
+    bool isWeb = false,
     String? customCss,
     bool allowCdnFonts = false,
   }) {
+    assert(
+      isWindows || isIosOrMacOS || isWeb,
+      'At least one of isWindows, isIosOrMacOS, or isWeb must be true',
+    );
+
     // Platform-specific initialization scripts
     String platformScript = '';
 
-    if (isWindows) {
+    if (isWeb) {
+      platformScript = '''
+<script>
+  console.log('[Web Init] Setting up for iframe mode');
+  self.MonacoEnvironment = {
+    baseUrl: '$vsPath/../',
+    getWorkerUrl: function(moduleId, label) {
+      var workerSrc = "self.MonacoEnvironment = { baseUrl: '$vsPath/../' }; importScripts('$vsPath/base/worker/workerMain.js');";
+      return URL.createObjectURL(new Blob([workerSrc], { type: 'application/javascript' }));
+    }
+  };
+  window.flutterChannel = {
+    postMessage: function(msg) {
+      window.parent.postMessage(msg, '*');
+    }
+  };
+  console.log('[Web Init] flutterChannel created successfully');
+</script>
+''';
+    } else if (isWindows) {
       platformScript = '''
 <script>
   // Windows: Create flutterChannel immediately when document is created
@@ -293,7 +265,7 @@ class MonacoAssets {
   console.log('[Windows Init] flutterChannel created successfully');
 </script>
 ''';
-    } else if (Platform.isIOS || Platform.isMacOS) {
+    } else if (isIosOrMacOS) {
       // iOS and macOS need blob worker shim for WKWebView + file:// protocol
       platformScript = '''
 <script>
@@ -373,12 +345,42 @@ class MonacoAssets {
       console.log('[Monaco HTML] Require config set. VS_PATH is: ' + '$vsPath');
     </script>
 
+    ${isWeb ? '''
+    <script>
+      // Web: Load loader.js dynamically to ensure proper timing in blob URL context
+      var loaderScript = document.createElement('script');
+      loaderScript.src = '$vsPath/loader.js';
+      loaderScript.onload = function() {
+        console.log('[Monaco HTML] loader.js dynamically loaded.');
+        window._monacoLoaderReady = true;
+        if (window._initMonacoWhenReady) window._initMonacoWhenReady();
+      };
+      loaderScript.onerror = function() {
+        console.error('[Monaco HTML] FATAL: loader.js FAILED TO LOAD.');
+        if (window.flutterChannel) {
+          window.flutterChannel.postMessage(JSON.stringify({ event: 'error', message: 'Failed to load Monaco loader.js' }));
+        }
+      };
+      document.head.appendChild(loaderScript);
+    </script>
+    ''' : '''
     <script src="$vsPath/loader.js"
             onload="console.log('[Monaco HTML] loader.js successfully loaded.')"
             onerror="console.error('[Monaco HTML] FATAL: loader.js FAILED TO LOAD.')"
     ></script>
+    '''}
 
     <script>
+      ${isWeb ? '''
+      // Web: Wait for loader.js to be ready
+      function _initMonaco() {
+        if (!window._monacoLoaderReady) {
+          window._initMonacoWhenReady = _initMonaco;
+          return;
+        }
+      ''' : '''
+      (function _initMonaco() {
+      '''}
       console.log('[Monaco HTML] Attempting to require editor.main...');
       try {
         require(
@@ -807,11 +809,13 @@ class MonacoAssets {
           },
           function (error) {
             console.error('[Monaco] FATAL: require() failed to load editor.main.js. Error:', error);
+            ${isWeb ? "if (window.flutterChannel) window.flutterChannel.postMessage(JSON.stringify({ event: 'error', message: 'Failed to load editor.main: ' + error }));" : ''}
           }
         );
       } catch (e) {
         console.error('[Monaco] FATAL: A critical error occurred trying to call require(). Error:', e);
       }
+      ${isWeb ? '}; _initMonaco();' : '})();'}
     </script>
   </body>
 </html>

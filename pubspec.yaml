@@ -18,11 +18,11 @@ platforms:
   ios:
   macos:
   windows:
+  web:
   # linux: # Not yet supported (no webview support yet)
-  # web: # Not supported (asset bundling limitation)
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: ">=3.0.0 <4.0.0"
   flutter: ">=3.16.0"
 
 dependencies:
@@ -32,6 +32,7 @@ dependencies:
   freezed_annotation: ^3.1.0
   path: ^1.9.1
   path_provider: ^2.1.5
+  web: ^1.1.0
   webview_flutter: ^4.13.0
   webview_windows: ^0.4.0
 
@@ -45,12 +46,12 @@ dev_dependencies:
 
 flutter:
   assets:
-    # Adding a trailing slash (e.g. assets/images/) only includes the files 
-    # directly inside that directory. It does NOT include subdirectories 
-    # or their contents. 
+    # Adding a trailing slash (e.g. assets/images/) only includes the files
+    # directly inside that directory. It does NOT include subdirectories
+    # or their contents.
     #
-    # Flutter does not support recursive asset inclusion. If you have 
-    # nested directories and want to include their assets as well, you must 
+    # Flutter does not support recursive asset inclusion. If you have
+    # nested directories and want to include their assets as well, you must
     # list each subdirectory manually.
 
     # everything that lives directly under assets/monaco
@@ -69,6 +70,9 @@ flutter:
     - assets/monaco/min/vs/base/browser/ui/
     - assets/monaco/min/vs/base/browser/ui/codicons/
     - assets/monaco/min/vs/base/browser/ui/codicons/codicon/
+
+    # ── bundled assets (workers with hashed names) ──
+    - assets/monaco/min/vs/assets/
 
     # ── editor core (CSS + JS bundles) ──
     - assets/monaco/min/vs/editor/

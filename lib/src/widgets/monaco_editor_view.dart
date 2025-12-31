@@ -423,68 +423,93 @@ class _MonacoEditorState extends State<MonacoEditor> {
 
   /// Builds the main content based on the current connection state.
   Widget _buildChild(BuildContext context) {
-    switch (_connectionState) {
-      case _ConnectionState.connecting:
-        return widget.loadingBuilder?.call(context) ?? const _DefaultLoading();
-
-      case _ConnectionState.error:
+    // No controller yet - show loading or error
+    if (_controller == null) {
+      if (_connectionState == _ConnectionState.error) {
         return widget.errorBuilder?.call(context, _error!, _stack) ??
             _DefaultError(
               error: _error!,
               onRetry: _ownsController ? _bootstrap : null,
             );
-
-      case _ConnectionState.ready:
-        final webView = SizedBox.expand(
-          child: Focus(
-            focusNode: _webFocusNode,
-            canRequestFocus: true,
-            autofocus: widget.autofocus,
-            onKeyEvent: (node, event) {
-              // Forward key events to the native platform view (WKWebView/WebView2)
-              if (event is KeyDownEvent) {
-                return KeyEventResult.skipRemainingHandlers;
-              }
-              return KeyEventResult.ignored;
-            },
-            child: Listener(
-              // Let the native WKWebView/WebView2 also receive the click.
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: (_) {
-                if (!_webFocusNode.hasFocus) {
-                  _webFocusNode.requestFocus();
-                }
-                if (_controller != null) {
-                  // Encourage DOM focus to land on Monaco's textarea promptly.
-                  unawaited(_controller!.ensureEditorFocus(attempts: 1));
-                }
-              },
-              child: _controller!.webViewWidget,
-            ),
-          ),
-        );
-        final showBar = widget.showStatusBar || widget.statusBarBuilder != null;
-
-        if (!showBar) {
-          return webView;
-        }
-
-        // The status bar is built here, listening to the controller's stats.
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: webView),
-            if (widget.statusBarBuilder != null)
-              ValueListenableBuilder<LiveStats>(
-                valueListenable: _controller!.liveStats,
-                builder: (context, stats, _) =>
-                    widget.statusBarBuilder!(context, stats),
-              )
-            else
-              _MonacoStatusBar(controller: _controller!),
-          ],
-        );
+      }
+      return widget.loadingBuilder?.call(context) ?? const _DefaultLoading();
     }
+
+    final webView = SizedBox.expand(
+      child: Focus(
+        focusNode: _webFocusNode,
+        canRequestFocus: true,
+        autofocus: widget.autofocus,
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent) {
+            return KeyEventResult.skipRemainingHandlers;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (_) {
+            if (!_webFocusNode.hasFocus) {
+              _webFocusNode.requestFocus();
+            }
+            unawaited(_controller!.ensureEditorFocus(attempts: 1));
+          },
+          child: _controller!.webViewWidget,
+        ),
+      ),
+    );
+
+    Widget content = webView;
+    if (_connectionState == _ConnectionState.connecting) {
+      // Overlay the webView with a loading indicator, this ensures the
+      // webView already exists and is ready to be rendered.
+      content = Stack(
+        children: [
+          content,
+          Positioned.fill(
+            child:
+                widget.loadingBuilder?.call(context) ?? const _DefaultLoading(),
+          ),
+        ],
+      );
+    } else if (_connectionState == _ConnectionState.error) {
+      // Overlay the webView with an error indicator, this ensures the
+      // webView already exists and is ready to be rendered.
+      content = Stack(
+        children: [
+          content,
+          Positioned.fill(
+            child: widget.errorBuilder?.call(context, _error!, _stack) ??
+                _DefaultError(
+                  error: _error!,
+                  onRetry: _ownsController ? _bootstrap : null,
+                ),
+          ),
+        ],
+      );
+    }
+
+    final showBar = widget.showStatusBar || widget.statusBarBuilder != null;
+
+    if (!showBar) {
+      return content;
+    }
+
+    // The status bar is built here, listening to the controller's stats.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(child: content),
+        if (widget.statusBarBuilder != null)
+          ValueListenableBuilder<LiveStats>(
+            valueListenable: _controller!.liveStats,
+            builder: (context, stats, _) =>
+                widget.statusBarBuilder!(context, stats),
+          )
+        else
+          _MonacoStatusBar(controller: _controller!),
+      ],
+    );
   }
 
   @override

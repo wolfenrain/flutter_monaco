@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_helper_utils/flutter_helper_utils.dart';
 import 'package:flutter_monaco/src/core/monaco_assets.dart';
@@ -10,8 +11,6 @@ import 'package:flutter_monaco/src/models/editor_options.dart';
 import 'package:flutter_monaco/src/models/monaco_enums.dart';
 import 'package:flutter_monaco/src/models/monaco_types.dart';
 import 'package:flutter_monaco/src/platform/platform_webview.dart';
-import 'package:webview_flutter/webview_flutter.dart' as wf;
-import 'package:webview_windows/webview_windows.dart' as ww;
 
 /// A callback function that provides completion items for a given
 /// [CompletionRequest]. It should return a [Future] that resolves to a
@@ -42,6 +41,7 @@ class MonacoController {
   // Content queuing for pre-ready calls
   String? _queuedValue;
   MonacoLanguage? _queuedLanguage;
+  final List<_RegisteredCompletion> _queuedCompletionSources = [];
   final Map<String, _RegisteredCompletion> _completionSources = {};
   bool _completionListenerWired = false;
 
@@ -84,145 +84,74 @@ class MonacoController {
     // Create and attach bridge
     final bridge = MonacoBridge()..attachWebView(webViewController);
 
-    // Initialize WebView based on platform
-    if (Platform.isWindows) {
-      await _initializeWindowsWebView(
-        webViewController as WindowsWebViewController,
-        bridge,
-        customCss: customCss,
-        allowCdnFonts: allowCdnFonts,
-      );
-    } else {
-      // macOS, iOS, and other platforms use the Flutter WebView
-      await _initializeFlutterWebView(
-        webViewController as FlutterWebViewController,
-        bridge,
-        customCss: customCss,
-        allowCdnFonts: allowCdnFonts,
-      );
-    }
+    // Initialize WebView.
+    await webViewController.initialize();
 
-    // Wait for editor ready signal with configurable timeout
-    await bridge.onReady.future.timeout(
-      readyTimeout ?? const Duration(seconds: 20),
-      onTimeout: () => throw TimeoutException(
-        'Monaco Editor did not report ready in ${readyTimeout?.inSeconds ?? 20} seconds.',
-      ),
+    // Set up JavaScript channel
+    await webViewController.addJavaScriptChannel(
+      'flutterChannel',
+      bridge.handleJavaScriptMessage,
     );
 
-    // Create controller
+    // Create controller first (before loading HTML) so widget can render.
     final controller = MonacoController._(bridge, webViewController);
 
-    // Mark ready BEFORE applying options to avoid deadlock
-    if (!controller._onReady.isCompleted) {
-      controller._onReady.complete();
-    }
+    final readyFuture = (() async {
+      await webViewController.load(
+        customCss: customCss,
+        allowCdnFonts: allowCdnFonts,
+      );
+      debugPrint(
+          '[MonacoController] Loading HTML (Platform: ${kIsWeb ? 'Web' : Platform.operatingSystem})');
 
-    // Apply initial options if provided
-    if (options != null) {
-      await controller.updateOptions(options);
-      await controller.setTheme(options.theme);
-      await controller.setLanguage(options.language);
-    }
+      // Wait for editor ready signal with configurable timeout
+      await bridge.onReady.future.timeout(
+        readyTimeout ?? const Duration(seconds: 20),
+        onTimeout: () => throw TimeoutException(
+          'Monaco Editor did not report ready in ${readyTimeout?.inSeconds ?? 20} seconds.',
+        ),
+      );
 
-    // Apply any queued content
-    if (controller._queuedValue != null) {
-      await controller.setValue(controller._queuedValue!);
-      controller._queuedValue = null;
-    }
-    if (controller._queuedLanguage != null) {
-      await controller.setLanguage(controller._queuedLanguage!);
-      controller._queuedLanguage = null;
+      // Mark ready
+      if (!controller._onReady.isCompleted) {
+        controller._onReady.complete();
+      }
+
+      // Apply initial options if provided
+      if (options != null) {
+        await controller.updateOptions(options);
+        await controller.setTheme(options.theme);
+        await controller.setLanguage(options.language);
+      }
+
+      // Apply any queued content
+      if (controller._queuedValue != null) {
+        await controller.setValue(controller._queuedValue!);
+        controller._queuedValue = null;
+      }
+      if (controller._queuedLanguage != null) {
+        await controller.setLanguage(controller._queuedLanguage!);
+        controller._queuedLanguage = null;
+      }
+
+      // Register any queued completion sources
+      for (final entry in controller._queuedCompletionSources) {
+        await controller._registerCompletionSourceInternal(entry);
+      }
+      controller._queuedCompletionSources.clear();
+    })();
+
+    if (kIsWeb) {
+      unawaited(readyFuture);
+    } else {
+      await readyFuture;
     }
 
     return controller;
   }
 
-  static Future<void> _initializeWindowsWebView(
-    WindowsWebViewController controller,
-    MonacoBridge bridge, {
-    String? customCss,
-    bool allowCdnFonts = false,
-  }) async {
-    // Initialize WebView2
-    await controller.initialize();
-
-    // Set up JavaScript channel
-    await controller.addJavaScriptChannel(
-      'flutterChannel',
-      bridge.handleJavaScriptMessage,
-    );
-
-    // Load HTML file with custom CSS if provided
-    final htmlFilePath = await MonacoAssets.indexHtmlPath(
-      customCss: customCss,
-      allowCdnFonts: allowCdnFonts,
-    );
-    debugPrint('[MonacoController] Loading HTML from file: $htmlFilePath');
-
-    final htmlUri = Uri.file(htmlFilePath);
-    await controller.loadUrl(htmlUri.toString());
-  }
-
-  static Future<void> _initializeFlutterWebView(
-    FlutterWebViewController controller,
-    MonacoBridge bridge, {
-    String? customCss,
-    bool allowCdnFonts = false,
-  }) async {
-    // Configure WebView
-    await controller.setJavaScriptMode();
-
-    // Set up JavaScript channel
-    await controller.addJavaScriptChannel(
-      'flutterChannel',
-      bridge.handleJavaScriptMessage,
-    );
-
-    // Set up console logging for debugging
-    await controller.setOnConsoleMessage((message) {
-      debugPrint('[Monaco Console] ${message.level.name}: ${message.message}');
-    });
-
-    // Set navigation delegates
-    controller.setNavigationDelegate(
-      wf.NavigationDelegate(
-        onPageFinished: (url) {
-          debugPrint('[MonacoController] WebView Page Finished: $url');
-        },
-        onWebResourceError: (error) {
-          debugPrint(
-            '[MonacoController] WebView Error: ${error.description} on ${error.url}',
-          );
-        },
-      ),
-    );
-
-    // Load HTML file with custom CSS if provided
-    final htmlFilePath = await MonacoAssets.indexHtmlPath(
-      customCss: customCss,
-      allowCdnFonts: allowCdnFonts,
-    );
-    debugPrint(
-        '[MonacoController] Loading HTML from: $htmlFilePath (Platform: ${Platform.operatingSystem})');
-    await controller.flutterController.loadFile(htmlFilePath);
-  }
-
   /// Get the platform-specific WebView widget
-  /// Supported: Windows (WebView2), macOS/iOS (WKWebView)
-  Widget get webViewWidget {
-    if (Platform.isWindows) {
-      return ww.Webview(
-        (_webViewController as WindowsWebViewController).windowsController,
-      );
-    } else {
-      // macOS, iOS use webview_flutter
-      return wf.WebViewWidget(
-        controller:
-            (_webViewController as FlutterWebViewController).flutterController,
-      );
-    }
-  }
+  Widget get webViewWidget => _webViewController.widget;
 
   /// Ensure the editor is ready before executing commands
   Future<void> _ensureReady() async {
@@ -234,14 +163,10 @@ class MonacoController {
   /// Set the editor language
   Future<void> setLanguage(MonacoLanguage language) async {
     if (!_onReady.isCompleted) {
+      // Queue the language - it will be applied when ready
+      // Don't await here to avoid blocking widget rendering
       _queuedLanguage = language;
-      await _ensureReady();
-      if (_queuedLanguage == language) {
-        // Only use queued value if it hasn't been overwritten
-        _queuedLanguage = null;
-      } else {
-        return; // A newer language was queued, skip this one
-      }
+      return;
     }
     await _webViewController.runJavaScript(
       'flutterMonaco.setLanguage(${jsonEncode(language.id)})',
@@ -280,7 +205,6 @@ class MonacoController {
       throw ArgumentError.value(id, 'id', 'Completion source already exists');
     }
 
-    await _ensureReady();
     final providerId = id ??
         'flutter_${DateTime.now().millisecondsSinceEpoch}_${_completionSources.length}';
     final entry = _RegisteredCompletion(
@@ -291,8 +215,20 @@ class MonacoController {
     );
     _completionSources[providerId] = entry;
 
+    if (!_onReady.isCompleted) {
+      // Queue for registration when ready - don't block widget rendering
+      _queuedCompletionSources.add(entry);
+      return providerId;
+    }
+
+    await _registerCompletionSourceInternal(entry);
+    return providerId;
+  }
+
+  Future<void> _registerCompletionSourceInternal(
+      _RegisteredCompletion entry) async {
     final payload = jsonEncode({
-      'id': providerId,
+      'id': entry.id,
       'languages': entry.languages,
       'triggerCharacters': entry.triggerCharacters,
     });
@@ -301,12 +237,11 @@ class MonacoController {
       await _webViewController
           .runJavaScript('flutterMonaco.registerCompletionSource($payload)');
     } catch (e) {
-      _completionSources.remove(providerId);
+      _completionSources.remove(entry.id);
       rethrow;
     }
 
     _wireCompletionListenerOnce();
-    return providerId;
   }
 
   /// Register a static list of completion items.
@@ -329,7 +264,13 @@ class MonacoController {
   /// Removes a completion provider, if registered.
   Future<void> unregisterCompletionSource(String id) async {
     _completionSources.remove(id);
-    await _ensureReady();
+    // Also remove from queue if it was pending registration
+    _queuedCompletionSources.removeWhere((e) => e.id == id);
+
+    if (!_onReady.isCompleted) {
+      // Not registered on JS side yet, just return
+      return;
+    }
     await _webViewController.runJavaScript(
       'flutterMonaco.unregisterCompletionSource(${jsonEncode(id)})',
     );
@@ -566,14 +507,10 @@ class MonacoController {
   /// Set the editor content with validation
   Future<void> setValue(String value) async {
     if (!_onReady.isCompleted) {
+      // Queue the value - it will be applied when ready
+      // Don't await here to avoid blocking widget rendering
       _queuedValue = value;
-      await _ensureReady();
-      if (_queuedValue == value) {
-        // Only use queued value if it hasn't been overwritten
-        _queuedValue = null;
-      } else {
-        return; // A newer value was queued, skip this one
-      }
+      return;
     }
     await _webViewController.runJavaScript(
       'flutterMonaco.setValue(${jsonEncode(value)})',
